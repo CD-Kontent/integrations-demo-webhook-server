@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: kontent-webhook-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEBHOOK_SECRET
+        sync: false  # This will be set manually in Render dashboard
+    healthCheckPath: /health
+    autoDeploy: true
+    branch: main

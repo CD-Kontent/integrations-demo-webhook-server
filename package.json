@@ -1,0 +1,31 @@
+{
+  "name": "kontent-webhook-server",
+  "version": "1.0.0",
+  "description": "Simple webhook server for receiving Kontent.ai webhooks",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:prod": "NODE_ENV=production node server.production.js",
+    "dev": "nodemon server.js",
+    "dev:prod": "nodemon server.production.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "@kontent-ai/webhook-helper": "^3.0.5",
+    "body-parser": "^1.20.2",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "webhook",
+    "kontent",
+    "cms",
+    "server"
+  ],
+  "author": "",
+  "license": "MIT"
+}
