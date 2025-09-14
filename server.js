@@ -1,18 +1,50 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const axios = require('axios');
 const { signatureHelper } = require('@kontent-ai/webhook-helper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Webhook secret key from Kontent.ai (you'll need to set this)
+// Webhook secret key from Kontent.ai
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'your-webhook-secret-here';
+
+// Sender.net API configuration
+const SENDER_API_URL = 'https://api.sender.net/v2/campaigns/aQ9DJ9/send';
+const SENDER_API_KEY = process.env.SENDER_API_KEY || 'your-sender-api-key-here';
 
 // Use raw body parser for signature validation
 app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
 
 // Parse JSON for other routes
 app.use(bodyParser.json());
+
+// Function to send data to Sender.net API
+async function sendToSenderNet(webhookData) {
+  try {
+    const response = await axios.post(SENDER_API_URL, {
+      webhook_data: webhookData,
+      timestamp: new Date().toISOString(),
+      source: 'kontent-webhook'
+    }, {
+      headers: {
+        'Authorization': `Bearer ${SENDER_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000 // 10 second timeout
+    });
+    
+    console.log('✅ Successfully sent to Sender.net:', response.status);
+    return { success: true, response: response.data };
+  } catch (error) {
+    console.error('❌ Failed to send to Sender.net:', error.message);
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+    }
+    return { success: false, error: error.message };
+  }
+}
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -24,7 +56,7 @@ app.get('/', (req, res) => {
 });
 
 // Webhook endpoint
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   console.log('Webhook received');
   
   try {
@@ -33,47 +65,39 @@ app.post('/webhook', (req, res) => {
     
     if (!signature) {
       console.log('Warning: No signature header found');
-      console.log('Headers received:', req.headers);
-    } else {
-      // Validate the webhook signature
-      const isValid = signatureHelper.isValidSignatureFromString(
-        req.body,
-        WEBHOOK_SECRET,
-        signature
-      );
-      
-      if (isValid) {
-        console.log('✅ Webhook signature validated successfully');
-      } else {
-        console.log('❌ Webhook signature validation failed');
-      }
+      return res.status(400).json({ error: 'Missing signature header' });
     }
     
-    // Parse and log the webhook payload
-    const payload = JSON.parse(req.body.toString());
-    console.log('Webhook payload:');
-    console.log(JSON.stringify(payload, null, 2));
+    // Validate the webhook signature
+    const isValid = signatureHelper.isValidSignatureFromString(
+      req.body,
+      WEBHOOK_SECRET,
+      signature
+    );
     
-    // Log specific details about the notification
-    if (payload.notifications && payload.notifications.length > 0) {
-      const notification = payload.notifications[0];
-      console.log('\n📋 Notification Summary:');
-      console.log(`Object Type: ${notification.message?.object_type}`);
-      console.log(`Action: ${notification.message?.action}`);
-      console.log(`Delivery Slot: ${notification.message?.delivery_slot}`);
-      
-      if (notification.data?.system) {
-        const system = notification.data.system;
-        console.log(`Object Name: ${system.name}`);
-        console.log(`Object Codename: ${system.codename}`);
-        console.log(`Last Modified: ${system.last_modified}`);
-      }
+    if (!isValid) {
+      console.log('❌ Webhook signature validation failed');
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+    
+    console.log('✅ Webhook signature validated successfully');
+    
+    // Parse the webhook payload
+    const payload = JSON.parse(req.body.toString());
+    
+    // Send to Sender.net API
+    const senderResult = await sendToSenderNet(payload);
+    
+    if (!senderResult.success) {
+      console.error('Failed to send to Sender.net, but webhook was valid');
+      // Still return success to Kontent.ai to avoid retries
     }
     
     // Send success response
     res.status(200).json({ 
-      message: 'Webhook received successfully',
-      timestamp: new Date().toISOString()
+      message: 'Webhook received and processed successfully',
+      timestamp: new Date().toISOString(),
+      sender_net_sent: senderResult.success
     });
     
   } catch (error) {
@@ -99,5 +123,6 @@ app.listen(PORT, () => {
   console.log(`🚀 Webhook server is running on port ${PORT}`);
   console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhook`);
   console.log(`🔑 Make sure to set WEBHOOK_SECRET environment variable with your webhook secret`);
+  console.log(`📧 Sender.net integration enabled - make sure to set SENDER_API_KEY environment variable`);
   console.log(`📖 Health check: http://localhost:${PORT}/`);
 });
